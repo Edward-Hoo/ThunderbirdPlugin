@@ -1,0 +1,129 @@
+:root {
+  color-scheme: light dark;
+  --bg: #ffffff;
+  --bg2: #f4f5f7;
+  --bg3: #e9ecf1;
+  --fg: #1d2129;
+  --muted: #5f6672;
+  --line: #d9dde3;
+  --accent: #2f6fe0;
+  --accent-fg: #ffffff;
+  --danger: #c0352b;
+  --ok-bg: #e7f5ea; --ok-fg: #1d5b2c;
+  --warn-bg: #fff4d6; --warn-fg: #6b4b00;
+  --err-bg: #fde8e6; --err-fg: #8a1f16;
+  --info-bg: #e8f0fd; --info-fg: #1d3f7a;
+  --unread: #10151f;
+  --link: #2459c4;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #1c1b22;
+    --bg2: #24232b;
+    --bg3: #2f2e37;
+    --fg: #e6e6ea;
+    --muted: #a4a3ad;
+    --line: #3b3a44;
+    --accent: #5b8def;
+    --danger: #f0776c;
+    --ok-bg: #1f3a27; --ok-fg: #b9e8c3;
+    --warn-bg: #3d3214; --warn-fg: #f2d68b;
+    --err-bg: #4a1f1c; --err-fg: #ffc2bc;
+    --info-bg: #1d2a44; --info-fg: #c3d6fb;
+    --unread: #ffffff;
+    --link: #8ab0ff;
+  }
+}
+
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+body { margin: 0; background: var(--bg); color: var(--fg); font: 13px/1.4 system-ui, -apple-system, "Segoe UI", Ubuntu, sans-serif; }
+body.busy { cursor: progress; }
+main { padding: 0 16px 40px; }
+
+.top { position: sticky; top: 0; z-index: 5; display: flex; align-items: center; gap: 24px; padding: 8px 16px; background: var(--bg2); border-bottom: 1px solid var(--line); }
+.top h1 { font-size: 17px; margin: 0; }
+#tabs { display: flex; gap: 4px; flex-wrap: wrap; }
+#tabs button { border: 0; background: transparent; color: var(--fg); padding: 5px 10px; border-radius: 4px; }
+#tabs button.active { background: var(--accent); color: var(--accent-fg); }
+
+button, select, input[type=text], input[type=search], input[type=email], input[type=password], input[type=date], textarea {
+  font: inherit; color: var(--fg); background: var(--bg); border: 1px solid var(--line); border-radius: 4px; padding: 3px 8px;
+}
+button { cursor: pointer; background: var(--bg2); }
+button:hover:not(:disabled) { border-color: var(--accent); }
+button:disabled { opacity: .45; cursor: default; }
+button.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-fg); }
+button.danger { color: var(--danger); }
+button.danger.on, button.on { background: var(--bg3); font-weight: 600; }
+button.link { background: none; border: 0; padding: 0 2px; color: var(--link); }
+button.link.close { color: var(--muted); font-size: 16px; margin-left: 8px; }
+input[type=checkbox] { margin: 0 2px; vertical-align: middle; }
+a { color: var(--link); text-decoration: none; }
+a:hover { text-decoration: underline; }
+
+.row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin: 8px 0; }
+.muted { color: var(--muted); }
+.small { font-size: 12px; }
+.nowrap { white-space: nowrap; }
+.num { text-align: right; font-variant-numeric: tabular-nums; }
+.warn-text { color: var(--danger); }
+
+.status { position: sticky; top: 45px; z-index: 4; margin: 8px 16px; padding: 7px 10px; border-radius: 4px; display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.status-info { background: var(--info-bg); color: var(--info-fg); }
+.status-ok { background: var(--ok-bg); color: var(--ok-fg); }
+.status-warn { background: var(--warn-bg); color: var(--warn-fg); }
+.status-error { background: var(--err-bg); color: var(--err-fg); }
+.status span { flex: 1 1 auto; }
+.progress { margin: 4px 16px; padding: 5px 10px; border-left: 3px solid var(--accent); background: var(--bg2); }
+
+.panel, fieldset { border: 1px solid var(--line); border-radius: 4px; padding: 6px 12px; margin: 10px 0; background: var(--bg2); }
+fieldset legend { font-weight: 600; padding: 0 4px; }
+.accounts { display: flex; flex-wrap: wrap; gap: 4px 28px; }
+.account-block { min-width: 260px; }
+.folder-tree { max-height: 320px; overflow: auto; border-left: 1px solid var(--line); margin: 2px 0 6px 8px; }
+.folder { display: block; white-space: nowrap; }
+.twisty { color: var(--muted); }
+
+table { border-collapse: collapse; width: 100%; }
+th { position: sticky; top: 45px; z-index: 2; background: var(--bg2); text-align: left; font-weight: 600; color: var(--muted); font-size: 12px; padding: 6px; border-bottom: 1px solid var(--line); }
+td { padding: 5px 6px; border-bottom: 1px solid var(--line); vertical-align: middle; }
+tr.category td { background: var(--bg3); }
+table.grouped tr.sender td.who { padding-left: 24px; }
+tr.sender:hover { background: var(--bg2); }
+tr.sender.open { background: var(--bg2); }
+td.who { cursor: pointer; }
+td.actions { white-space: nowrap; }
+td.actions button { margin: 1px; font-size: 12px; padding: 2px 7px; }
+tr.detail > td { background: var(--bg); padding: 4px 0 12px 36px; }
+.detail-box table td, .detail-box table th { padding: 3px 6px; }
+.detail-box th { position: static; }
+table.addresses { margin-bottom: 8px; }
+table.messages tr.unread td { font-weight: 700; color: var(--unread); }
+table.messages td:nth-child(3) { max-width: 46em; overflow: hidden; text-overflow: ellipsis; }
+.folder-input { min-width: 22em; }
+.cat-select { max-width: 14em; font-size: 12px; }
+.bulk { padding: 4px 0; }
+
+.badge { display: inline-block; font-size: 11px; font-weight: 600; padding: 0 6px; border-radius: 8px; background: var(--bg3); color: var(--muted); margin-left: 6px; }
+.badge-block { background: var(--err-bg); color: var(--err-fg); }
+.badge-keep { background: var(--ok-bg); color: var(--ok-fg); }
+
+table.activity tr.batch td { background: var(--bg3); }
+table.activity tr.restored td { opacity: .55; }
+ul.members { margin: 4px 0; padding-left: 18px; list-style: none; }
+/* Fixed columns, so the Move to boxes line up in every category. */
+ul.members li { display: grid; grid-template-columns: 20em 18em 11em 12em max-content; column-gap: 10px; align-items: center; padding: 3px 6px; border-radius: 4px; cursor: pointer; }
+ul.members li:hover { background: var(--bg2); }
+ul.members li.selected { background: var(--info-bg); color: var(--info-fg); box-shadow: inset 3px 0 0 var(--accent); }
+ul.members li.selected .muted { color: inherit; }
+ul.members .note { width: 100%; font-size: 12px; }
+ul.members .member-name { overflow-wrap: anywhere; }
+ul.members .cat-select { width: 100%; }
+.cat-name { font-weight: 600; }
+.form { display: grid; gap: 6px; margin: 6px 0; max-width: 640px; }
+.form label { display: flex; align-items: center; gap: 6px; }
+textarea.export { width: 100%; font-family: ui-monospace, monospace; font-size: 12px; }
+
+dialog.confirm { border: 1px solid var(--line); border-radius: 6px; background: var(--bg); color: var(--fg); max-width: 520px; }
+dialog.confirm::backdrop { background: rgba(0, 0, 0, .4); }

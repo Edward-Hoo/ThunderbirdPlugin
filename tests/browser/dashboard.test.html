@@ -1,0 +1,270 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>dashboard test</title>
+<link rel="stylesheet" href="../../src/dashboard/dashboard.css">
+</head>
+<body>
+<pre id="result">RUNNING</pre>
+<div id="app"></div>
+<script type="module">
+// README §11 check 3 (dashboard load test, with URL parameters) and the click tests
+// for R-GR-9, plus the WebCrypto round trip for R-SYN-1. Loaded in headless Chrome.
+import { makeFake } from '../fake-messenger.js';
+import { setRule, emptyConfig, addCategory, assignCategory, setCategoryAction, setNote } from '../../src/lib/config.js';
+
+const out = [];
+let failures = 0;
+const ok = (cond, name, extra = '') => { out.push(`${cond ? '  ok  ' : '  FAIL'} ${name}${cond ? '' : ' ' + extra}`); if (!cond) failures++; document.getElementById('result').textContent = 'RUNNING\n' + out.join('\n'); };
+const wait = ms => new Promise(r => setTimeout(r, ms));
+const until = async (fn, ms = 4000) => { const t = Date.now(); while (Date.now() - t < ms) { if (fn()) return true; await wait(20); } return false; };
+
+const fake = makeFake();
+for (let i = 0; i < 8; i++) fake.addMessage({ author: `Shop <deals@e.shop.com>`, folderId: 'gm:/INBOX', subject: `Deal ${i}` });
+for (let i = 0; i < 3; i++) fake.addMessage({ author: `Chloe <chloe@vip.shop.com>`, folderId: 'gm:/INBOX', subject: `VIP ${i}` });
+fake.addMessage({ author: 'Mom <mom@gmail.com>', folderId: 'gm:/INBOX', subject: 'Dinner' });
+fake.addMessage({ author: 'Boss <boss@work.com>', folderId: 'ex:/Inbox', subject: 'Report' });
+fake.addMessage({ author: 'Chef Talk <digest@vesta.threadloom.news>', folderId: 'gm:/INBOX', subject: 'Knife thread' });
+fake.addMessage({ author: '"Overclock.net" <digest@vesta.threadloom.news>', folderId: 'gm:/INBOX', subject: 'GPU thread' });
+fake.store.config = assignCategory(addCategory(setRule(emptyConfig(), 'd:nothing-here.com', 'block'), 'fashion'), 'd:shop.com', 'fashion');
+globalThis.messenger = fake.api;
+
+const params = new URLSearchParams(location.search);
+try {
+  const html = await (await fetch('../../src/dashboard/dashboard.html')).text();
+  const doc = new DOMParser().parseFromString(html, 'text/html');
+  document.getElementById('app').append(...[...doc.body.children].map(n => document.importNode(n, true)));
+  await import('../../src/dashboard/main.js');
+  await until(() => document.querySelector('#tab-senders .scope button'));
+  await wait(300);
+
+  ok(fake.mailCalls().length === 0, `load${location.search ? ' with ' + location.search : ''}: no mail calls`, JSON.stringify(fake.mailCalls()));
+
+  if (params.get('person')) {
+    const input = document.querySelector('#tab-person input[type=email]');
+    ok(input && input.value === params.get('person'), 'person parameter only prefills the field');
+    ok(!document.getElementById('tab-person').hidden, 'person tab shown');
+  } else {
+    // Clicking around tabs never touches mail.
+    for (const b of document.querySelectorAll('#tabs button')) b.click();
+    document.querySelector('#tabs [data-tab="senders"]').click();
+    await wait(100);
+    ok(fake.mailCalls().length === 0, 'switching tabs: no mail calls');
+
+    // Scan reads only.
+    const scanBtn = [...document.querySelectorAll('#tab-senders button')].find(b => b.textContent.startsWith('Scan'));
+    scanBtn.click();
+    await until(() => document.querySelectorAll('table.senders tbody tr.sender').length > 0);
+    ok(fake.mailCalls().some(c => c.path === 'messages.list'), 'Scan reads folders');
+    ok(fake.mutations().length === 0, 'Scan changes nothing', JSON.stringify(fake.mutations()));
+    const rows = [...document.querySelectorAll('table.senders tbody tr.sender')];
+    ok(rows.length === 4, 'four sender rows from the default Inboxes-only scan (shop.com, mom@gmail.com, work.com, threadloom digest)', String(rows.length));
+    // R-SND-6: Group by category.
+    const cats = () => [...document.querySelectorAll('table.senders tr.category')];
+    const senderCount = () => document.querySelectorAll('table.senders tbody tr.sender').length;
+    const groupBox = () => [...document.querySelectorAll('#tab-senders label')].find(l => l.textContent.includes('Group by category')).querySelector('input');
+    ok(!groupBox().checked && cats().length === 0, 'R-SND-6 grouping is off by default');
+    groupBox().click(); await wait(50);
+    ok(cats().length === 2 && /fashion 1 sender/.test(cats()[0].textContent) && /No category 3 senders/.test(cats()[1].textContent), 'categories listed, No category last', cats().map(c => c.textContent).join('|'));
+    ok(cats()[0].nextElementSibling.textContent.includes('shop.com') && cats()[0].querySelector('td.num').textContent === '11', 'sender sits under its category, with totals');
+    cats()[0].querySelector('input').click(); await wait(50);
+    ok(cats()[0].querySelector('input').checked && /1 selected/.test(document.querySelector('.bulk').textContent), 'category checkbox selects its senders');
+    cats()[0].querySelector('input').click(); await wait(50);
+    document.querySelector('table.senders tr.category ~ tr.category + tr.sender input').click(); await wait(50);
+    ok(cats()[1].querySelector('input').indeterminate, 'ticking one sender makes its category partial');
+    document.querySelector('table.senders tr.category ~ tr.category + tr.sender input').click(); await wait(50);
+    cats()[1].querySelector('td.who').click(); await wait(50);
+    ok(cats().length === 2 && senderCount() === 1, 'collapsing a category hides its senders');
+    document.querySelector('table.senders thead input').click(); await wait(50);
+    ok(/1 selected/.test(document.querySelector('.bulk').textContent), 'Select all shown skips collapsed categories');
+    document.querySelector('table.senders thead input').click(); await wait(50);
+    ok(fake.store.sendersView.groupByCategory && fake.store.sendersView.closedCats.length === 1, 'grouping is remembered');
+    cats()[1].querySelector('td.who').click(); await wait(50);
+    groupBox().click(); await wait(50);
+    ok(cats().length === 0 && senderCount() === 4 && fake.mutations().length === 0, 'turning it off restores the flat list; no mail touched');
+    rows.splice(0, rows.length, ...document.querySelectorAll('table.senders tbody tr.sender'));
+    const digestRow = () => [...document.querySelectorAll('table.senders tbody tr.sender')].filter(r => r.textContent.includes('digest@vesta.threadloom.news'));
+    digestRow()[0].querySelector('td.who').click(); await wait(100);
+    ok(document.querySelector('.name-split') && document.querySelector('.name-split').textContent.includes('Chef Talk (1)') && document.querySelector('.name-split').textContent.includes('Overclock.net (1)'), 'expanded shared address shows its display names with a Split by name button');
+    digestRow()[0].querySelector('td.who').click(); await wait(100);
+    const splitBtn = [...digestRow()[0].querySelectorAll('button')].find(b => b.textContent === 'Split by name');
+    ok(splitBtn, 'shared address with two display names offers Split by name');
+    splitBtn.click(); await wait(150);
+    ok(digestRow().length === 2 && digestRow().some(r => r.textContent.includes('Chef Talk')) && digestRow().some(r => r.textContent.includes('Overclock.net')), 'Split by name gives one row per display name');
+    const chefId = [...fake.mail.values()].find(m => m.subject === 'Knife thread').id;
+    const ocId = [...fake.mail.values()].find(m => m.subject === 'GPU thread').id;
+    [...digestRow().find(r => r.textContent.includes('Chef Talk')).querySelectorAll('button')].find(b => b.textContent === 'Block').click();
+    await until(() => !document.body.classList.contains('busy') && fake.folderOf(chefId) === 'gm:/[Gmail]/Trash'); await wait(100);
+    ok(fake.store.config.rules['n:digest@vesta.threadloom.news|chef talk']?.action === 'block', 'Block on a name row stores a name rule');
+    ok(fake.folderOf(chefId) === 'gm:/[Gmail]/Trash' && fake.folderOf(ocId) === 'gm:/INBOX', 'Block trashed that name only', JSON.stringify(fake.mutations()));
+    ok(fake.mutations().length === 1 && digestRow().length === 1, 'exactly one move; the blocked row left the list');
+    ok(/Blocked .*1 moved to Trash/.test(document.getElementById('status').textContent), 'status says it was blocked and trashed', document.getElementById('status').textContent);
+    const mutsAfterBlock = fake.mutations().length;
+    const shopRow = rows.find(r => r.textContent.includes('shop.com'));
+    ok(shopRow && shopRow.textContent.includes('2 addresses'), 'grouped row shows its addresses');
+
+    // Expand: no mail moves.
+    shopRow.querySelector('td.who').click();
+    await wait(100);
+    ok(document.querySelector('table.addresses') && document.querySelector('table.addresses').textContent.includes('chloe@vip.shop.com'), 'R-SND-4 expanded group lists each address');
+    const btn = (row, label) => [...row.querySelectorAll('button')].find(b => b.textContent === label);
+    ok(fake.mutations().length === mutsAfterBlock, 'expanding a row moves nothing');
+
+    // Per-message: select one and Move it to a new nested folder.
+    const msgBoxes = [...document.querySelectorAll('table.messages input[type=checkbox]')];
+    msgBoxes[0].click();
+    const input = document.querySelector('.msg-tools .folder-input');
+    input.value = 'Receipts/2026';
+    const before = fake.mutations().length;
+    [...document.querySelectorAll('.msg-tools button')].find(b => b.textContent === 'Move').click();
+    await until(() => fake.mutations().length > before && !document.body.classList.contains('busy'));
+    await wait(150);
+    const muts = fake.mutations().slice(before);
+    ok(muts.filter(m => m.path === 'folders.create').length === 1 && muts.filter(m => m.path === 'messages.move').length === 1, 'Move click: creates the folder and moves 1 message', JSON.stringify(muts));
+
+    // Trash all on the row: moves the rest to Trash, list updates without rescanning.
+    const shop = [...document.querySelectorAll('table.senders tbody tr.sender')].find(r => r.textContent.includes('shop.com'));
+    btn(shop, 'Trash all').click();
+    await until(() => ![...document.querySelectorAll('table.senders tbody tr.sender')].some(r => r.textContent.includes('shop.com')));
+    const trashed = fake.mutations().filter(m => m.path === 'messages.move' && m.args[1] === 'gm:/[Gmail]/Trash').flatMap(m => m.args[0]).filter(id => id !== chefId);
+    ok(trashed.length === 10, 'Trash all moved the 10 remaining shop.com messages to Trash', String(trashed.length));
+    ok(fake.calls.every(c => c.path !== 'messages.delete'), 'never messages.delete');
+    ok(document.getElementById('status').textContent.includes('10 moved to Trash'), 'status reports the outcome', document.getElementById('status').textContent);
+
+    // Activity: the batch is listed; Restore all puts it back.
+    document.querySelector('#tabs [data-tab="activity"]').click();
+    await until(() => document.querySelector('table.activity tr.batch'));
+    const restoreAll = [...document.querySelectorAll('table.activity button')].find(b => /^Restore all/.test(b.textContent));
+    ok(restoreAll && restoreAll.textContent === 'Restore all 10', 'Activity lists the batch', restoreAll && restoreAll.textContent);
+    restoreAll.click();
+    await until(() => document.getElementById('status').textContent.includes('restored'));
+    ok(trashed.every(id => fake.folderOf(id) === 'gm:/INBOX'), 'Restore all put them back in the Inbox');
+
+    // Clear log asks first.
+    [...document.querySelectorAll('#tab-activity button')].find(b => b.textContent === 'Clear log').click();
+    await wait(50);
+    ok(document.querySelector('dialog.confirm[open]'), 'Clear log asks for confirmation');
+    [...document.querySelectorAll('dialog.confirm button')].find(b => b.textContent === 'Cancel').click();
+
+    // Trash all on one address inside a grouped row, under Group by category, is logged.
+    document.querySelector('#tabs [data-tab="senders"]').click();
+    const left = [...fake.mail.values()].filter(m => m.folderId === 'gm:/INBOX' && m.author.includes('chloe@')).length;
+    scanBtn.click();
+    await until(() => [...document.querySelectorAll('table.senders tr.sender')].some(r => r.textContent.includes('shop.com')));
+    groupBox().click(); await wait(50);
+    [...document.querySelectorAll('table.senders tr.sender')].find(r => r.textContent.includes('shop.com')).querySelector('td.who').click(); await wait(50);
+    const logs = () => Object.entries(fake.store).filter(([k]) => k.startsWith('logb:')).map(([, v]) => v);
+    const logsBefore = logs().length;
+    const chloeRow = [...document.querySelectorAll('table.addresses tr')].find(r => r.textContent.includes('chloe@vip.shop.com'));
+    btn(chloeRow, 'Trash all').click();
+    await until(() => !document.body.classList.contains('busy') && logs().length > logsBefore); await wait(150);
+    ok(logs().length === logsBefore + 1 && logs().some(b => b.entries.length === left && b.entries.every(e => e.addr === 'chloe@vip.shop.com')), 'Trash all on an address in a subgroup is logged', JSON.stringify(logs().map(b => [b.reason, b.entries.length])));
+    ok(document.querySelector('table.activity').textContent.includes('Trash: chloe@vip.shop.com'), 'and Activity lists it');
+    groupBox().click(); await wait(50);
+
+    // Trash all on a category: its listed senders only, as one logged batch.
+    groupBox().click(); await wait(50);
+    const inboxShop = () => [...fake.mail.values()].filter(m => m.folderId === 'gm:/INBOX' && m.author.includes('shop.com')).length;
+    const others = () => [...fake.mail.values()].filter(m => /INBOX|Inbox/.test(m.folderId) && !m.author.includes('shop.com')).length;
+    const shopLeft = inboxShop(), othersLeft = others(), logsThen = logs().length;
+    const fashion = cats().find(c => c.textContent.includes('fashion')), none = cats().find(c => c.textContent.includes('No category'));
+    ok(btn(fashion, 'Trash all') && !btn(none, 'Trash all'), 'a category has Trash all; No category does not');
+    btn(fashion, 'Trash all').click();
+    await until(() => !document.body.classList.contains('busy') && inboxShop() === 0); await wait(150);
+    ok(shopLeft > 0 && inboxShop() === 0 && others() === othersLeft, 'category Trash all trashes only that category');
+    ok(logs().length === logsThen + 1 && logs().some(b => b.reason.includes('category fashion') && b.entries.length === shopLeft), 'category Trash all is logged as one batch', JSON.stringify(logs().map(b => [b.reason, b.entries.length])));
+    ok(!cats().some(c => c.textContent.includes('fashion')), 'the emptied category left the list');
+    groupBox().click(); await wait(50);
+
+    // R-SND-7: From/To dates limit rows, totals and actions.
+    const msgDates = [['2025-03-01T00:00', 'first minute'], ['2025-03-10T12:00', 'middle'], ['2025-03-31T23:59', 'last minute'], ['2025-04-01T00:00', 'day after'], ['2025-02-28T23:59', 'day before']];
+    const dated = Object.fromEntries(msgDates.map(([d, s]) => [s, fake.addMessage({ author: 'Dated <x@dated.com>', folderId: 'gm:/INBOX', subject: s, date: new Date(d).toISOString() })]));
+    const datedRow = () => [...document.querySelectorAll('table.senders tr.sender')].find(r => r.textContent.includes('dated.com'));
+    const setDate = async (i, v) => { const el = document.querySelectorAll('.dates input')[i]; el.value = v; el.dispatchEvent(new Event('change')); await wait(50); };
+    scanBtn.click(); await until(datedRow); await wait(100);
+    const msgCount = () => datedRow().querySelector('td.num').textContent;
+    ok(msgCount() === '5', 'no dates: all messages');
+    datedRow().querySelector('td.who').click(); await wait(50);
+    const pick = [...document.querySelectorAll('table.messages tr')].find(r => r.textContent.includes('day after'));
+    pick.querySelector('input').click();
+    await setDate(0, '2025-03-01');
+    ok(msgCount() === '4', 'From alone', msgCount());
+    await setDate(1, '2025-03-31');
+    ok(msgCount() === '3', 'From and To days are included', msgCount());
+    ok(document.querySelector('.msg-tools').textContent.includes('0 selected'), 'a ticked message outside the range is unticked');
+    ok(/act only on messages in this range/.test(document.querySelector('.dates').textContent), 'a note says actions are limited');
+    btn(datedRow(), 'Trash all').click();
+    await until(() => !document.body.classList.contains('busy') && !datedRow()); await wait(100);
+    ok(['first minute', 'middle', 'last minute'].every(s => fake.folderOf(dated[s]) === 'gm:/[Gmail]/Trash') && ['day after', 'day before'].every(s => fake.folderOf(dated[s]) === 'gm:/INBOX'), 'Trash all leaves mail outside the range alone');
+    await setDate(0, '2025-05-01');
+    ok(/From is after To/.test(document.querySelector('.dates').textContent), 'reversed dates are pointed out');
+    btn(document.querySelector('.dates'), 'Clear dates').click(); await wait(50);
+    ok(msgCount() === '2', 'Clear dates shows the rest');
+
+    // R-CAT-1: move a sender to another category from the Categories tab.
+    const mutsBeforeCat = fake.mutations().length;
+    const { updateConfig } = await import('../../src/dashboard/state.js');
+    await updateConfig(c => addCategory(c, 'kitchen'));
+    await updateConfig(c => setCategoryAction(addCategory(c, 'junk'), 'junk', 'block'));
+    document.querySelector('#tabs [data-tab="categories"]').click();
+    const catTr = n => [...document.querySelectorAll('table.cats tbody tr')].find(r => r.querySelector('.cat-name').value === n);
+    const moveTo = async (from, to) => { const s = catTr(from).querySelector('.members select'); s.value = to; s.dispatchEvent(new Event('change')); await wait(80); };
+    catTr('fashion').querySelector('button.link').click(); await wait(50);
+    const opts = [...catTr('fashion').querySelectorAll('.members option')].map(o => o.textContent);
+    ok(JSON.stringify(opts) === JSON.stringify(['Move to…', 'junk (Block: trashes mail)', 'kitchen']), 'Move to lists the other categories and labels Block', JSON.stringify(opts));
+    await moveTo('fashion', 'kitchen');
+    ok(fake.store.config.catOf['d:shop.com'] === 'kitchen' && catTr('fashion').textContent.includes('no senders') && catTr('kitchen').textContent.includes('1 sender'), 'the sender moved to the other category');
+    catTr('kitchen').querySelector('button.link').click(); await wait(50);
+    const member = () => catTr('kitchen').querySelector('.members li');
+    member().querySelector('.member-name').click();
+    ok(member().classList.contains('selected') && document.querySelectorAll('.members li.selected').length === 1, 'clicking a sender highlights its row');
+    const note = member().querySelector('input.note');
+    note.value = 'The shoe shop'; note.dispatchEvent(new Event('change')); await wait(80);
+    ok(fake.store.config.notes['d:shop.com'] === 'The shoe shop' && note.isConnected, 'a comment is saved without rebuilding the page');
+    catTr('kitchen').querySelector('button.link').click(); await wait(30); catTr('kitchen').querySelector('button.link').click(); await wait(30);
+    ok(member().querySelector('input.note').value === 'The shoe shop' && member().classList.contains('selected'), 'comment and highlight survive collapsing');
+    await moveTo('kitchen', 'junk');
+    ok(/is a Block category/.test(document.getElementById('status').textContent), 'moving into a Block category says so');
+    ok(fake.mutations().length === mutsBeforeCat, 'moving a sender between categories touches no mail');
+    document.querySelector('#tabs [data-tab="senders"]').click();
+
+    // R-SCP-2: Inboxes only also ticks Spam/Junk folders.
+    btn(document.querySelector('.scope'), 'Inboxes only').click(); await wait(50);
+    ok(JSON.stringify([...fake.store.scanSel].sort()) === JSON.stringify(['ex:/Inbox', 'ex:/Junk', 'gm:/INBOX']), 'Inboxes only ticks inboxes and Junk', JSON.stringify(fake.store.scanSel));
+
+    // A sender's comment shows after its name on the Senders tab.
+    await updateConfig(c => setNote(setNote(c, 'd:dated.com', 'The shoe shop'), 'a:x@dated.com', 'unused'));
+    await wait(50);
+    ok(datedRow().querySelector('td.who strong').textContent === 'dated.com (The shoe shop)', 'comment after the sender', datedRow().querySelector('td.who strong').textContent);
+    const plain = [...document.querySelectorAll('table.senders tr.sender')].find(r => r.textContent.includes('mom@gmail.com'));
+    ok(plain.querySelector('td.who strong').textContent === 'mom@gmail.com', 'no comment, no parentheses');
+
+    // Folder scope: the account checkbox toggles all its mail folders; parents carry subfolders.
+    document.querySelector('#tabs [data-tab="senders"]').click();
+    const acctBox = () => [...document.querySelectorAll('.account label')].find(l => l.textContent.includes('me@gmail.com')).querySelector('input');
+    const gmSel = () => (fake.store.scanSel || []).filter(id => id.startsWith('gm:')).sort();
+    const gmMail = ['gm:/INBOX', 'gm:/Receipts', 'gm:/Receipts/2025', 'gm:/Receipts/2026', 'gm:/[Gmail]'].sort(); // 2026 was created by the Move step above
+    ok(acctBox().indeterminate, 'account shows partial when only its Inbox is ticked');
+    acctBox().click(); await wait(100);
+    ok(JSON.stringify(gmSel()) === JSON.stringify(gmMail) && acctBox().checked && !acctBox().indeterminate, 'account click ticks every mail folder (not Sent/Trash)', JSON.stringify(gmSel()));
+    acctBox().click(); await wait(100);
+    ok(gmSel().length === 0 && !acctBox().checked, 'second account click unticks all its folders', JSON.stringify(gmSel()));
+    [...document.querySelectorAll('.account button.twisty')][0].click(); await wait(50);
+    const folderBox = name => [...document.querySelectorAll('.folder-tree label.folder')].find(l => l.textContent.trim().startsWith(name)).querySelector('input');
+    folderBox('Receipts').click(); await wait(100);
+    ok(JSON.stringify(gmSel()) === JSON.stringify(['gm:/Receipts', 'gm:/Receipts/2025', 'gm:/Receipts/2026']), 'ticking a folder ticks its subfolders', JSON.stringify(gmSel()));
+    folderBox('[Gmail]').click(); await wait(100);
+    ok(!gmSel().includes('gm:/[Gmail]/Trash') && !gmSel().includes('gm:/[Gmail]/Sent Mail'), 'subfolder cascade skips Sent/Trash');
+    folderBox('Receipts').click(); await wait(100);
+    ok(!gmSel().includes('gm:/Receipts') && !gmSel().includes('gm:/Receipts/2025'), 'unticking a folder unticks its subfolders', JSON.stringify(gmSel()));
+
+  }
+} catch (e) {
+  ok(false, 'exception', e && (e.stack || e.message || e));
+}
+out.push(`${failures ? 'FAILED' : 'PASSED'} (${failures} failures)`);
+document.getElementById('result').textContent = out.join('\n');
+</script>
+</body>
+</html>

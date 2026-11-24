@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html><head><meta charset="utf-8"><title>Ed's Mail Helper (demo with fake data)</title>
+<link rel="stylesheet" href="../../src/dashboard/dashboard.css"></head>
+<body><div id="app"></div>
+<script type="module">
+// Visual check only: the dashboard against fake mail, scanned and one row expanded.
+import { makeFake } from '../fake-messenger.js';
+import { emptyConfig, addCategory, assignCategory, setRule } from '../../src/lib/config.js';
+const f = makeFake();
+const senders = [
+  ['Sur La Table <sur_la_table@p.email-promo.surlatable.com>', 40], ['Chloe at Sur La Table <chloe@vip.surlatable.com>', 6],
+  ['Harbor Freight <hf@em.harborfreight.com>', 30], ['Best Buy <BestBuyInfo@emailinfo.bestbuy.com>', 25],
+  ['Mom <mom@gmail.com>', 4], ['Frank <frank-steelcurtaincapital.com@shared1.ccsend.com>', 9],
+  ['GOP NJ <franklyspeakingnj@gopnewjersey.ccsend.com>', 7], ['Newsletter <news@mcsv.net>', 12]];
+let n = 0;
+for (const [a, c] of senders) for (let i = 0; i < c; i++) f.addMessage({ author: a, folderId: 'gm:/INBOX', subject: `${a.split('<')[0].trim()} offer #${i + 1}`, read: (n++ % 3) === 0, size: 50000 + i * 1000 });
+let cfg = addCategory(emptyConfig(), 'kitchen'); cfg = addCategory(cfg, 'tools');
+cfg = assignCategory(cfg, 'd:surlatable.com', 'kitchen'); cfg = assignCategory(cfg, 'd:harborfreight.com', 'tools');
+cfg = setRule(cfg, 'a:mom@gmail.com', 'keep');
+f.store.config = cfg; f.store.scanSel = ['gm:/INBOX'];
+globalThis.messenger = f.api;
+const html = await (await fetch('../../src/dashboard/dashboard.html')).text();
+const doc = new DOMParser().parseFromString(html, 'text/html');
+document.getElementById('app').append(...[...doc.body.children].map(x => document.importNode(x, true)));
+await import('../../src/dashboard/main.js');
+const wait = ms => new Promise(r => setTimeout(r, ms));
+await wait(300);
+[...document.querySelectorAll('#tab-senders button')].find(b => b.textContent.startsWith('Scan')).click();
+await wait(500);
+document.querySelector('table.senders tbody tr.sender td.who').click();
+</script></body></html>

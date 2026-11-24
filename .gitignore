@@ -1,0 +1,7 @@
+# IDE settings
+.idea/
+# Python caches from the test scripts
+__pycache__/
+*.pyc
+# Screenshots can show real mail
+Screenshot*.png

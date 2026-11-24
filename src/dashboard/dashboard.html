@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Ed's Mail Helper</title>
+  <link rel="stylesheet" href="dashboard.css">
+  <script type="module" src="main.js"></script>
+</head>
+<body>
+  <header class="top">
+    <h1>Ed's Mail Helper <span id="version" class="muted small"></span></h1>
+    <nav id="tabs">
+      <button data-tab="senders" class="active">Senders</button>
+      <button data-tab="person">File by person</button>
+      <button data-tab="categories">Categories</button>
+      <button data-tab="rules">Rules</button>
+      <button data-tab="activity">Activity</button>
+      <button data-tab="settings">Settings</button>
+    </nav>
+  </header>
+  <div id="status" class="status" hidden></div>
+  <div id="progress" class="progress" hidden></div>
+  <main>
+    <section id="tab-senders" class="tab"></section>
+    <section id="tab-person" class="tab" hidden></section>
+    <section id="tab-categories" class="tab" hidden></section>
+    <section id="tab-rules" class="tab" hidden></section>
+    <section id="tab-activity" class="tab" hidden></section>
+    <section id="tab-settings" class="tab" hidden></section>
+  </main>
+</body>
+</html>

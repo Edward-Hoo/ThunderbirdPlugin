@@ -1,0 +1,23 @@
+<!DOCTYPE html>
+<html><head><meta charset="utf-8"><title>crypto test</title></head>
+<body><pre id="result">RUNNING</pre>
+<!-- holds the load event open (real time) so --dump-dom waits for the crypto below -->
+<img src="/__sleep?ms=6000" alt="">
+<script type="module">
+// R-SYN-1: AES-GCM / PBKDF2 round trip, wrong passphrase and garbage are ignored.
+import { encryptJson, decryptJson } from '../../src/lib/crypto.js';
+const out = []; let failures = 0;
+const ok = (c, n) => { out.push(`${c ? '  ok  ' : '  FAIL'} ${n}`); if (!c) failures++; };
+try {
+  const blob = await encryptJson({ a: 1, s: 'héllo' }, 'correct horse battery');
+  ok(JSON.stringify(await decryptJson(blob, 'correct horse battery')) === JSON.stringify({ a: 1, s: 'héllo' }), 'R-SYN-1 AES-GCM/PBKDF2 round trip');
+  ok(await decryptJson(blob, 'wrong passphrase!') === null, 'R-SYN-1 wrong passphrase -> ignored');
+  ok(await decryptJson('{"garbage":1}', 'x') === null, 'R-SYN-1 garbage -> ignored');
+  ok(await decryptJson('not json', 'x') === null, 'R-SYN-1 non-JSON -> ignored');
+  ok(!blob.includes('héllo') && JSON.parse(blob).it >= 100000, 'payload encrypted, strong KDF');
+  let threw = false; try { await encryptJson({}, 'short'); } catch { threw = true; }
+  ok(threw, 'short passphrase refused');
+} catch (e) { ok(false, 'exception ' + (e.stack || e)); }
+out.push(`${failures ? 'FAILED' : 'PASSED'} (${failures} failures)`);
+document.getElementById('result').textContent = out.join('\n');
+</script></body></html>
